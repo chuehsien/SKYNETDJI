@@ -1,0 +1,2 @@
+configurations.maybeCreate("default")
+artifacts.add("default", file('DJI-SDK-LIB-241.aar'))

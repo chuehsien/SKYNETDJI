@@ -1,0 +1,42 @@
+apply plugin: 'com.android.model.application'
+
+model {
+    android {
+        compileSdkVersion = 22
+        buildToolsVersion = "23.0.1"
+
+        defaultConfig.with {
+            applicationId = "com.example.chueh.skynetdji"
+            minSdkVersion.apiLevel = 15
+            targetSdkVersion.apiLevel = 22
+            versionCode = 1
+            versionName = "1.0"
+        }
+    }
+    android.buildTypes {
+        release {
+            minifyEnabled = false
+            proguardFiles.add(file('proguard-android.txt'))
+        }
+    }
+//    android.ndk {
+//        moduleName = "hello-android-jni"
+//    }
+    android.sources{
+        main{
+            java.source.srcDirs += ['src/main/java']
+            aidl.source.srcDirs += ['src/main/aidl']
+        }
+
+    }
+
+}
+
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile 'com.android.support:appcompat-v7:22.1.1'
+    //compile (name:'../dJISDKLIB', ext:'aar')
+    compile project(':opencv')
+    compile project(':dJISDKLIB-32')
+}
