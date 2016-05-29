@@ -75,8 +75,8 @@ import dji.sdk.Camera.DJICameraSettingsDef.CameraShootPhotoMode;
 public class MainActivity extends Activity implements SurfaceTextureListener,OnClickListener{
 
     private static final String TAG = MainActivity.class.getName();
-    private static final int VIDEO_HEIGHT = 9;
-    private static final int VIDEO_WIDTH = 16;
+    private static final int VIDEO_HEIGHT = 720;
+    private static final int VIDEO_WIDTH = 960;
     private static final String PRODUCT_READY = "product ready";
 //    private int TIME = 1000;
 //    public Handler mhandler;
@@ -105,6 +105,9 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     private Object atakBooleanLock = new Object();
     private final Messenger mActivityMessenger = new Messenger(
             new ActivityHandler(this));
+
+
+    private final static byte[] delimiter = {0,0,1,0,0,0,0}; //last 2 bytes are for size.
 
     private class ActivityHandler extends Handler {
         private final WeakReference<MainActivity> mActivity;
@@ -172,7 +175,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         else {
 
             try {
-//                Log.d(TAG,"writing to os: " + size + " bytes");
+               // Log.d(TAG,"writing to os: " + size + " bytes");
+                //Log.d(TAG,bytesToHexString(buf,size));
+//                delimiter[6] = (byte)(0xFF & size);
+//                delimiter[5] = (byte)((size>>8)&0xFF);
+//                outStream.write(delimiter,0,7);
                 outStream.write(buf,0,size);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -180,7 +187,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
 
         }
-
 
     }
 
@@ -211,7 +217,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         @Override
         public void run() {
             updateAtakAppStatus();
-            mHandler.postDelayed(updateRunnable,3000);
+            mHandler.postDelayed(updateRunnable,5000);
 
         }
     };
@@ -223,12 +229,12 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
         setContentView(R.layout.activity_main);
         mHandler = new Handler();
-        mHandler.postDelayed(updateRunnable,3000);
+        mHandler.postDelayed(updateRunnable,5000);
 
 
         Log.d(TAG,"onCreate");
-        UsbManager mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
-        PendingIntent mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+//        UsbManager mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+//        PendingIntent mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
 
         serviceConnection = new ServiceConnection() {
             public void onServiceConnected(ComponentName className, IBinder service) {
@@ -258,12 +264,12 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 //        Log.d(TAG,"Size0: " + deviceList.size());
 //        printMap(deviceList);
 
-        UsbAccessory[] accessoryList = mUsbManager.getAccessoryList();
-        if (accessoryList != null && accessoryList.length == 1){
-            accessory = accessoryList[0];
-        }else{
-            Log.d(TAG,"Connect DJIcontroller!");
-        }
+//        UsbAccessory[] accessoryList = mUsbManager.getAccessoryList();
+//        if (accessoryList != null && accessoryList.length == 1){
+//            accessory = accessoryList[0];
+//        }else{
+//            Log.d(TAG,"Connect DJIcontroller!");
+//        }
 
 
 
@@ -287,8 +293,15 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                 if (!atakAppConnected) {
 //                    Log.d(TAG,"atak not connected");
                     if (mCodecManager != null) {
+                        //Log.d(TAG,"Bytes: " + bytesToHexString(videoBuffer,size));
+
+                        //add header information
+
+
                         mCodecManager.sendDataToDecoder(videoBuffer, size);
-                    } else Log.e(TAG, "mCodecManager is null " + size);
+                    } else {
+                        //Log.e(TAG, "mCodecManager is null " + size);
+                    }
                 }else{
                     if (bridgeOn)writeToStream(videoBuffer,size);
                 }
@@ -340,10 +353,19 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         filter.addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED);
 //        filter.addAction(PRODUCT_READY);
         registerReceiver(mReceiver, filter);
-        mUsbManager.requestPermission(accessory, mPermissionIntent);
+//        mUsbManager.requestPermission(accessory, mPermissionIntent);
 
     }
-
+    public static String bytesToHexString(byte[] bytes, int size){
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        for(byte b : bytes){
+            sb.append(String.format("%02x ", b&0xff));
+            i ++;
+            if (i == size) break;
+        }
+        return i +": " + sb.toString();
+    }
     protected BroadcastReceiver mReceiver = new BroadcastReceiver() {
 
         @Override
@@ -542,6 +564,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                     camera.setDJICameraReceivedVideoDataCallback(mReceivedVideoDataCallBack);
 //                    Intent intent = new Intent(PRODUCT_READY);
 //                    sendBroadcast(intent);
+                    showToast("Connected to " + camera.getDisplayName());
 
                 }
             }
@@ -562,6 +585,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         if (mCodecManager == null) {
             mCodecManager = new DJICodecManager(this, surface, width, height);
             switchCameraMode(CameraMode.ShootPhoto);
+            adjustAspectRatio();
         }
         //mCodecManager = null;
     }
@@ -913,7 +937,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 //                    }
 
                     canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), borderPaint);
-
+                    Log.d(TAG,"Still drawing");
 
                     if (canvas != null) {
                         if (surface == null) break;

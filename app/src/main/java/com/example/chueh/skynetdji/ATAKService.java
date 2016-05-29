@@ -58,7 +58,7 @@ public class ATAKService extends Service {
         else {
 
             try {
-                Log.d(TAG,"writing to os: " + size + " bytes");
+//                Log.d(TAG,"writing to os: " + size + " bytes");
                 outStream.write(buf,0,size);
             } catch (IOException e) {
                 e.printStackTrace();

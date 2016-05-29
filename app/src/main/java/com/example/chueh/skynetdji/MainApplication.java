@@ -81,7 +81,7 @@ public class MainApplication extends Application{
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(getApplicationContext(), "Success", Toast.LENGTH_LONG).show();
+                        Toast.makeText(getApplicationContext(), "API Registration Success", Toast.LENGTH_LONG).show();
                     }
                 });
             } else {

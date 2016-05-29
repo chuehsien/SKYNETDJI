@@ -36,6 +36,14 @@ public class ATAKServiceHandler extends Service {
     Messenger djiApp = null;
     OutputStream atakStream = null;
     Messenger atakApp = null;
+    ParcelFileDescriptor[] pfdArr;
+    int numBound;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        numBound = 0;
+    }
 
     private static final String TAG = ATAKServiceHandler.class.getName();
 
@@ -50,14 +58,14 @@ public class ATAKServiceHandler extends Service {
                 case MSG_MESSENGER_DJIAPP:
                     Log.d(TAG,"received djiapp messenger!");
                     djiApp = msg.replyTo;
+                    if (pfdArr == null) {
+                        try {
+                            pfdArr = ParcelFileDescriptor.createPipe();
 
-                    ParcelFileDescriptor[] pfdArr;
-                    try {
-                        pfdArr = ParcelFileDescriptor.createPipe();
-
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            break;
+                        }
                     }
 
                     //send write stream to dji app : pfdArr[1]
@@ -66,43 +74,43 @@ public class ATAKServiceHandler extends Service {
                     b.putParcelable("pfd",pfdArr[1]);
                     replyMsg.setData(b);
                     try{
-                        Log.d(TAG,"djiapp <---STREAM---- service");
+                        Log.d(TAG,"djiapp <---STREAM---- service"+pfdArr[0] + " " + pfdArr[1]);
                         djiApp.send(replyMsg);
                     }catch (RemoteException e){
                         e.printStackTrace();
                         break;
                     }
                     //read stream for myself:
-                    djiStream = new ParcelFileDescriptor.AutoCloseInputStream(pfdArr[0]);
+                   // djiStream = new ParcelFileDescriptor.AutoCloseInputStream(pfdArr[0]);
                     break;
 
                 case MSG_MESSENGER_ATAKAPP:
                     Log.d(TAG,"received atakapp messenger!");
                     atakApp = msg.replyTo;
 
-                    ParcelFileDescriptor[] pfdArr2;
-                    try {
-                        pfdArr2 = ParcelFileDescriptor.createPipe();
+                    if (pfdArr == null) {
+                        try {
+                            pfdArr = ParcelFileDescriptor.createPipe();
 
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                            break;
+                        }
                     }
-
                     //send write stream to dji app : pfdArr[1]
                     Message replyMsg2 = Message.obtain(null, ATAKServiceHandler.MSG_STREAM, 0, 0);
                     Bundle b2 = new Bundle();
-                    b2.putParcelable("pfd",pfdArr2[0]);
+                    b2.putParcelable("pfd",pfdArr[0]);
                     replyMsg2.setData(b2);
                     try{
-                        Log.d(TAG,"atakapp <---STREAM---- service");
+                        Log.d(TAG,"atakapp <---STREAM---- service"+pfdArr[0] + " " + pfdArr[1]);
                         atakApp.send(replyMsg2);
                     }catch (RemoteException e){
                         e.printStackTrace();
                         break;
                     }
                     //read stream for myself:
-                    atakStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfdArr2[1]);
+                    //atakStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfdArr2[1]);
 
                     break;
 
@@ -131,13 +139,15 @@ public class ATAKServiceHandler extends Service {
                     break;
                 case MSG_START_BRIDGE:
                     Log.d(TAG,"Received request to start copystream");
-                    if (djiStream!=null && atakStream!=null){
-                        new Thread()
-                        {
-                            public void run() {
-                                copyStream(djiStream,atakStream);
-                            }
-                        }.start();
+                    if (atakApp!=null && djiApp!=null){
+//                        new Thread()
+//                        {
+//                            public void run() {
+//                                copyStream(djiStream,atakStream);
+//                            }
+//                        }.start();
+
+                        MainActivity.bridgeOn = true;
 
                     }
                     break;
@@ -152,6 +162,16 @@ public class ATAKServiceHandler extends Service {
 
     final Messenger mMessenger = new Messenger(new IncomingHandler());
 
+    @Override
+    public boolean onUnbind(Intent intent) {
+        numBound --;
+        if (numBound == 0){
+            pfdArr = null;
+        }
+        return super.onUnbind(intent);
+
+    }
+
     /**
      * When binding to the service, we return an interface to our messenger
      * for sending messages to the service.
@@ -159,6 +179,7 @@ public class ATAKServiceHandler extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         Log.d(TAG,"onBind");
+        numBound ++;
         Toast.makeText(getApplicationContext(), "binding", Toast.LENGTH_SHORT).show();
         return mMessenger.getBinder();
     }
@@ -166,7 +187,7 @@ public class ATAKServiceHandler extends Service {
 
 
 
-    public static void copyStream(InputStream input, OutputStream output)
+    public void copyStream(InputStream input, OutputStream output)
     {
         MainActivity.bridgeOn = true;
         byte[] buffer = new byte[2050]; // Adjust if you want
@@ -181,10 +202,14 @@ public class ATAKServiceHandler extends Service {
         }catch (IOException e){
             e.printStackTrace();
             Log.d(TAG,"copyStream failed!");
+            atakApp = null;
+            atakStream = null;
             return;
         }
 
         MainActivity.bridgeOn = false;
+
+
     }
 
 }
