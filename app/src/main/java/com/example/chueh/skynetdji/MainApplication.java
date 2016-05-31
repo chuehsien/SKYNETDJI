@@ -63,6 +63,9 @@ public class MainApplication extends Application{
         mHandler = new Handler(Looper.getMainLooper());
         //This is used to start SDK services and initiate SDK.
         DJISDKManager.getInstance().initSDKManager(this, mDJISDKManagerCallback);
+//        Intent i = new Intent(this,MainActivity.class);
+//        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+//        startActivity(i);
     }
 
     /**
@@ -149,6 +152,7 @@ public class MainApplication extends Application{
 
         @Override
         public void run() {
+            Log.d(TAG,"Sending broadcast");
             Intent intent = new Intent(FLAG_CONNECTION_CHANGE);
             sendBroadcast(intent);
         }

@@ -15,6 +15,7 @@ import android.graphics.PorterDuff;
 import android.hardware.usb.UsbAccessory;
 import android.hardware.usb.UsbManager;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -105,7 +106,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     private Object atakBooleanLock = new Object();
     private final Messenger mActivityMessenger = new Messenger(
             new ActivityHandler(this));
-
+    private CountDownTimer helloTimer;
 
     private final static byte[] delimiter = {0,0,1,0,0,0,0}; //last 2 bytes are for size.
 
@@ -177,9 +178,9 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             try {
                // Log.d(TAG,"writing to os: " + size + " bytes");
                 //Log.d(TAG,bytesToHexString(buf,size));
-//                delimiter[6] = (byte)(0xFF & size);
-//                delimiter[5] = (byte)((size>>8)&0xFF);
-//                outStream.write(delimiter,0,7);
+                delimiter[6] = (byte)(0xFF & size);
+                delimiter[5] = (byte)((size>>8)&0xFF);
+                outStream.write(delimiter,0,7);
                 outStream.write(buf,0,size);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -190,9 +191,18 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
     }
 
+   private void sayHelloToService(){
+        //Log.d(TAG,"hello to service!");
+        Message msg = Message.obtain(null, ATAKServiceHandler.MSG_HELLO_FROM_DJI, 0, 0);
+        try {
+            mService.send(msg);
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
+    }
 
-    public void sayHello() {
-        Log.d(TAG,"djiapp --HELLO--> service");
+    public void initConnectionWithService() {
+        //Log.d(TAG,"djiapp --HELLO--> service");
         if (!mBound) return;
         // Create and send a message to the service, using a supported 'what' value
         Message msg = Message.obtain(null, ATAKServiceHandler.MSG_MESSENGER_DJIAPP, 0, 0);
@@ -228,6 +238,8 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
+//        moveTaskToBack(true);
+
         mHandler = new Handler();
         mHandler.postDelayed(updateRunnable,5000);
 
@@ -246,7 +258,20 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                 mService = new Messenger(service);
                 mBound = true;
                 Log.d(TAG,"Connected to service!");
-                sayHello();
+                initConnectionWithService();
+                helloTimer = new CountDownTimer(5000,4000) {
+                    @Override
+                    public void onTick(long l) {
+                        //
+                    }
+
+                    @Override
+                    public void onFinish() {
+                        sayHelloToService();
+                        helloTimer.cancel();
+                        helloTimer.start();
+                    }
+                }.start();
             }
 
             public void onServiceDisconnected(ComponentName className) {

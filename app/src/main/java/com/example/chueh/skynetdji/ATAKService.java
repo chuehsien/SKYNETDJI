@@ -52,6 +52,7 @@ public class ATAKService extends Service {
     private static final String ACTION_USB_PERMISSION ="com.android.example.USB_PERMISSION";
     protected TextureView mVideoSurface = null;
     private Renderer mRenderer; protected DJICodecManager mCodecManager = null;
+
     public void writeToStream(byte[] buf, int size){
 
         if (outStream == null) Log.d(TAG,"os = null");
@@ -63,17 +64,13 @@ public class ATAKService extends Service {
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
-
         }
-
-
     }
 
     public DJICamera.CameraReceivedVideoDataCallback mReceivedVideoDataCallBack = new DJICamera.CameraReceivedVideoDataCallback() {
 
         @Override
-        public void onResult(final byte[] videoBuffer, int size) {
+        public void onResult(final byte[] videoBuffer, final int size) {
             Log.d("thread","Received video data");
             if (mCodecManager != null){
                 Log.d("thread","forward to codecmanager");
@@ -81,20 +78,9 @@ public class ATAKService extends Service {
             }
             new Thread(){
                 public void run(){
-                    Log.d("thread","Writing video data");
+                    writeToStream(videoBuffer,size);
                 }
             }.start();
-
-//                if (getOutStream() == null) Log.d(TAG,"onresult: outstream: null");
-//
-//                else Log.d(TAG,"onresult: outstream: " + getOutStream().toString());
-//
-//                if (mCodecManager!=null) {
-//                    mCodecManager.sendDataToDecoder(videoBuffer, size);
-//                }else Log.e(TAG, "mCodecManager is null " + size);
-
-
-            //writeToStream(videoBuffer,size);
         }
     };
 
