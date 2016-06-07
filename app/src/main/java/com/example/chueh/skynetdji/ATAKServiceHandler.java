@@ -22,6 +22,10 @@ import dji.sdk.base.DJIBaseProduct;
 
 /**
  * Created by chue on 5/24/16.
+ * This is the service that mediates the communication between the atakapp and this dji app.
+ * The service creates a pipe using ParcelFileDescriptor.createPipe(),
+ * The output file descriptor is given to the dji app, the input file descriptor is given to the atak app.
+ * The 2 apps use the file descriptor to create input/output streams to relay the video from dji to atak app.
  */
 public class ATAKServiceHandler extends Service {
 
@@ -38,7 +42,6 @@ public class ATAKServiceHandler extends Service {
     static final int MSG_HELLO_FROM_SERVICE = 10;
     static final int FALSE = 000;
     static final int TRUE = 111;
-
 
     InputStream djiStream = null;
     Messenger djiApp = null;
@@ -66,7 +69,6 @@ public class ATAKServiceHandler extends Service {
                     Toast.makeText(getApplicationContext(), "hello!", Toast.LENGTH_SHORT).show();
                     break;
                 case MSG_HELLO_FROM_ATAK:
-                    Log.d(TAG,"Hello from atak");
                     if (atakCountdown!= null){
                         atakCountdown.cancel();
                         atakCountdown.start();
@@ -94,8 +96,6 @@ public class ATAKServiceHandler extends Service {
                     }
                     break;
                 case MSG_HELLO_FROM_DJI:
-                    Log.d(TAG,"Hello from dji");
-                //    Log.d(TAG,"received hello from dji");
                     if (djiCountdown!= null){
                         djiCountdown.cancel();
                         djiCountdown.start();
@@ -106,13 +106,11 @@ public class ATAKServiceHandler extends Service {
                         djiCountdown.cancel();
                         djiCountdown.start();
                     }
-                //    Log.d(TAG,"received djiapp messenger!");
+
                     djiApp = msg.replyTo;
                     if (pfdArr == null) {
-                        Log.d(TAG,"Creating new pipe");
                         try {
                             pfdArr = ParcelFileDescriptor.createPipe();
-
                         } catch (IOException e) {
                             e.printStackTrace();
                             break;
@@ -125,7 +123,6 @@ public class ATAKServiceHandler extends Service {
                     b.putParcelable("pfd",pfdArr[1]);
                     replyMsg.setData(b);
                     try{
-                        //Log.d(TAG,"djiapp <---STREAM---- service"+pfdArr[0] + " " + pfdArr[1]);
                         djiApp.send(replyMsg);
                     }catch (RemoteException e){
                         e.printStackTrace();
@@ -149,26 +146,19 @@ public class ATAKServiceHandler extends Service {
                         }
                     }
 
-
-
+                    // Start countdown, activity considered 'dead' if they dont say hello at least once every 10 seconds.
                     djiCountdown = new CountDownTimer(10000, 9000) {
 
                         public void onTick(long millisUntilFinished) {
-//                            mTextField.setText("seconds remaining: " + millisUntilFinished / 1000);
                         }
                         public void onFinish() {
                             disconnectDji();
                         }
                     }.start();
 
-
-
-                    //read stream for myself:
-                   // djiStream = new ParcelFileDescriptor.AutoCloseInputStream(pfdArr[0]);
                     break;
 
                 case MSG_MESSENGER_ATAKAPP:
-                    Log.d(TAG,"received atakapp messenger!");
                     if (atakCountdown!= null){
                         atakCountdown.cancel();
                         atakCountdown.start();
@@ -177,9 +167,7 @@ public class ATAKServiceHandler extends Service {
 
                     if (pfdArr == null) {
                         try {
-                            Log.d(TAG,"Creating new pipe");
                             pfdArr = ParcelFileDescriptor.createPipe();
-
                         } catch (IOException e) {
                             e.printStackTrace();
                             break;
@@ -202,18 +190,16 @@ public class ATAKServiceHandler extends Service {
 
                     replyMsg2.setData(b2);
                     try{
-                        //Log.d(TAG,"atakapp <---STREAM---- service"+pfdArr[0] + " " + pfdArr[1]);
                         atakApp.send(replyMsg2);
                     }catch (RemoteException e){
                         e.printStackTrace();
                         break;
                     }
-                    //read stream for myself:
-                    //atakStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfdArr2[1]);
+
+                    // Start countdown, activity considered 'dead' if they dont say hello at least once every 10 seconds.
                     atakCountdown = new CountDownTimer(10000, 9000) {
 
                         public void onTick(long millisUntilFinished) {
-//                            mTextField.setText("seconds remaining: " + millisUntilFinished / 1000);
                         }
                         public void onFinish() {
                             disconnectAtak();
@@ -222,7 +208,6 @@ public class ATAKServiceHandler extends Service {
                     break;
 
                 case MSG_IS_ATAKAPP_CONNECTED:
-                    //send write stream to dji app : pfdArr[1]
                     Message replyMsg5 = Message.obtain(null, ATAKServiceHandler.MSG_IS_ATAKAPP_CONNECTED, 0, 0);
                     replyMsg5.arg1 = (atakApp==null) ? FALSE : TRUE;
                     try{
@@ -234,7 +219,6 @@ public class ATAKServiceHandler extends Service {
 
                     break;
                 case MSG_IS_DJIAPP_CONNECTED:
-                    //send write stream to dji app : pfdArr[1]
                     Message replyMsg4 = Message.obtain(null, ATAKServiceHandler.MSG_IS_DJIAPP_CONNECTED, 0, 0);
                     replyMsg4.arg1 = (djiApp==null) ? FALSE : TRUE;
                     try{

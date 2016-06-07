@@ -42,8 +42,6 @@ import android.widget.CompoundButton;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
-import com.example.chueh.aidl.atakservice.IATAKService;
-
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
 import org.opencv.core.CvType;
@@ -78,38 +76,35 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     private static final String TAG = MainActivity.class.getName();
     private static final int VIDEO_HEIGHT = 720;
     private static final int VIDEO_WIDTH = 960;
-    private static final String PRODUCT_READY = "product ready";
-//    private int TIME = 1000;
-//    public Handler mhandler;
-    private VideoOverlay myVideoOverlay;
+    private static final long RENDER_INTERVAL_MS = 1000;
 
+
+    // DJI specific stuff
     protected DJICamera.CameraReceivedVideoDataCallback mReceivedVideoDataCallBack = null;
 
-    // Codec for video live view
+    // Codec for video live view - used when DJISKYNET is run as a standalone app (without atak)
     protected DJICodecManager mCodecManager = null;
-    protected TextView mConnectStatusTextView;
 
+    // UI stuff
+    protected TextView mConnectStatusTextView;
     protected TextureView mVideoSurface = null;
     protected TextureView mOverlapSurface = null;
-
     private Button mCaptureBtn, mShootPhotoModeBtn, mRecordVideoModeBtn;
     private ToggleButton mRecordBtn;
     private TextView recordingTime;
 
-
-    private ATAKService bgService;
+    // service connection stuff
     private ServiceConnection serviceConnection;
     boolean mBound = false;
     Messenger mService = null;
     private boolean atakAppConnected = false;
     private Handler mHandler = null;
     private Object atakBooleanLock = new Object();
-    private final Messenger mActivityMessenger = new Messenger(
-            new ActivityHandler(this));
+    private final Messenger mActivityMessenger = new Messenger(new ActivityHandler(this));
     private CountDownTimer helloTimer;
-
     private final static byte[] delimiter = {0,0,1,0,0,0,0}; //last 2 bytes are for size.
 
+    // handler for all messages received from service
     private class ActivityHandler extends Handler {
         private final WeakReference<MainActivity> mActivity;
 
@@ -145,24 +140,13 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                 break;
                 default:
                     Log.d(TAG,"Unknown msg from service");
-
-
-
             }
         }
 
     }
     private Renderer mRenderer;
-
-//    static {
-//        System.loadLibrary("hello-android-jni");
-//    }
-//    public native String getMsgFromJni();
-//
     private OutputStream outStream;
-    public static boolean bridgeOn = false;
-    private static final String ACTION_USB_PERMISSION ="com.android.example.USB_PERMISSION";
-    private UsbAccessory accessory;
+    public static boolean bridgeOn = false; //represents whether the pipe connection to the atak app is on. (both sides need to receive a parcelfieldescriptor created by the service
 
     public void setWritePfd(ParcelFileDescriptor writePfd){
         Log.d(TAG,"pipe created, registering outputstream");
@@ -176,11 +160,12 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         else {
 
             try {
-               // Log.d(TAG,"writing to os: " + size + " bytes");
-                //Log.d(TAG,bytesToHexString(buf,size));
+                // writes a delimiter of 0 0 1 0 0 sizeHiByte sizeLoByte
                 delimiter[6] = (byte)(0xFF & size);
                 delimiter[5] = (byte)((size>>8)&0xFF);
                 outStream.write(delimiter,0,7);
+
+                // writes the rest of the data
                 outStream.write(buf,0,size);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -192,7 +177,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     }
 
    private void sayHelloToService(){
-        //Log.d(TAG,"hello to service!");
+       // for sending 'alive' signals to the service
         Message msg = Message.obtain(null, ATAKServiceHandler.MSG_HELLO_FROM_DJI, 0, 0);
         try {
             mService.send(msg);
@@ -202,10 +187,12 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     }
 
     public void initConnectionWithService() {
-        //Log.d(TAG,"djiapp --HELLO--> service");
+
         if (!mBound) return;
-        // Create and send a message to the service, using a supported 'what' value
+        // Create and send a message of type "MSG_MESSENGER_DJIAPP"
         Message msg = Message.obtain(null, ATAKServiceHandler.MSG_MESSENGER_DJIAPP, 0, 0);
+
+        //the service uses the 'replyTo' field to reply to this activity.
         msg.replyTo = mActivityMessenger;
         try {
             mService.send(msg);
@@ -236,29 +223,23 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     protected void onCreate(Bundle savedInstanceState) {
 
         super.onCreate(savedInstanceState);
-
+        Log.d(TAG,"onCreate");
         setContentView(R.layout.activity_main);
-//        moveTaskToBack(true);
 
+        //checks and updates if the atak app is connected.
         mHandler = new Handler();
         mHandler.postDelayed(updateRunnable,5000);
 
-
-        Log.d(TAG,"onCreate");
-//        UsbManager mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
-//        PendingIntent mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
-
         serviceConnection = new ServiceConnection() {
             public void onServiceConnected(ComponentName className, IBinder service) {
-                // This is called when the connection with the service has been
-                // established, giving us the object we can use to
-                // interact with the service.  We are communicating with the
-                // service using a Messenger, so here we get a client-side
-                // representation of that from the raw IBinder object.
                 mService = new Messenger(service);
                 mBound = true;
                 Log.d(TAG,"Connected to service!");
+
+                //send first message, requesting for parcelfiledescriptor from the service.
                 initConnectionWithService();
+
+                // timer to tell service that this activity is alive. happens every 5seconds
                 helloTimer = new CountDownTimer(5000,4000) {
                     @Override
                     public void onTick(long l) {
@@ -283,28 +264,9 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             }
         };
 
-
-
-//        HashMap<String, UsbDevice> deviceList = mUsbManager.getDeviceList();
-//        Log.d(TAG,"Size0: " + deviceList.size());
-//        printMap(deviceList);
-
-//        UsbAccessory[] accessoryList = mUsbManager.getAccessoryList();
-//        if (accessoryList != null && accessoryList.length == 1){
-//            accessory = accessoryList[0];
-//        }else{
-//            Log.d(TAG,"Connect DJIcontroller!");
-//        }
-
-
-
-
-
         if (!OpenCVLoader.initDebug()) {
             Log.e(TAG,"opencv init error!");// Handle initialization error
         }
-
-
 
         initUI();
 
@@ -316,16 +278,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 //                Log.d(TAG,"onResult of callback");
 
                 if (!atakAppConnected) {
-//                    Log.d(TAG,"atak not connected");
                     if (mCodecManager != null) {
                         //Log.d(TAG,"Bytes: " + bytesToHexString(videoBuffer,size));
-
-                        //add header information
-
-
                         mCodecManager.sendDataToDecoder(videoBuffer, size);
                     } else {
-                        //Log.e(TAG, "mCodecManager is null " + size);
+
                     }
                 }else{
                     if (bridgeOn)writeToStream(videoBuffer,size);
@@ -335,6 +292,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
         DJICamera camera = MainApplication.getCameraInstance();
 
+        /* NOT USED - remnants from DJI FPV sample code */
         if (camera != null) {
             camera.setDJICameraUpdatedSystemStateCallback(new DJICamera.CameraUpdatedSystemStateCallback() {
                 @Override
@@ -371,14 +329,10 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             });
         }
 
-        // Register the broadcast receiver for receiving the device connection's changes.
+        // Register the broadcast receiver for receiving the device connection's changes from MainApplication.
         IntentFilter filter = new IntentFilter();
         filter.addAction(MainApplication.FLAG_CONNECTION_CHANGE);
-        filter.addAction(ACTION_USB_PERMISSION);
-        filter.addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED);
-//        filter.addAction(PRODUCT_READY);
         registerReceiver(mReceiver, filter);
-//        mUsbManager.requestPermission(accessory, mPermissionIntent);
 
     }
     public static String bytesToHexString(byte[] bytes, int size){
@@ -401,28 +355,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                 updateTitleBar();
                 onProductChange();
                 initPreviewer();
-            }else if (intent.getAction() == ACTION_USB_PERMISSION) {
-                accessory = (UsbAccessory) intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY);
-                Boolean perm = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
-
-                if (perm && (accessory != null)) {
-                    Log.d(TAG, "USB permission allowed");
-
-                    Intent myIntent = new Intent(getApplicationContext(), dji.sdk.SDKManager.DJIAoaControllerActivity.class);
-                    myIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(myIntent);
-                    Log.d(TAG, "Started AoaActivity");
-                }
-                else if (perm && (accessory == null)){
-                    Log.d(TAG, "USB accessory null");
-                }else if (!perm) {
-                    Log.d(TAG, "USB permission denied");
-                }
-
-
-            }else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED.equals(intent.getAction())) {
-                UsbAccessory accessory = (UsbAccessory) intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY);
-                Log.d(TAG,"accessory detached");
             }
 
         }
@@ -477,19 +409,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     public void onResume() {
         Log.d(TAG, "onResume");
         super.onResume();
-//        initPreviewer();
-//        //myVideoOverlay.start();
-//        updateTitleBar();
-//        if(mVideoSurface == null) {
-//            Log.e(TAG, "mVideoSurface is null");
-//        }
     }
 
     @Override
     public void onPause() {
         Log.d(TAG, "onPause");
-//        uninitPreviewer();
-//        //myVideoOverlay.halt();
         super.onPause();
     }
 
@@ -507,7 +431,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
     @Override
     protected void onDestroy() {
         Log.e(TAG, "onDestroy");
-//        uninitPreviewer();
         if (mBound) {
             unbindService(serviceConnection);
             mBound = false;
@@ -524,8 +447,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
         mRenderer = new Renderer();
         mRenderer.start();
-//        myVideoOverlay = new VideoOverlay(mOverlapSurface,this);
-//        myVideoOverlay.start();
 
         mOverlapSurface.setSurfaceTextureListener(mRenderer);
         mOverlapSurface.setAlpha(0.99f);
@@ -537,11 +458,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             mVideoSurface.setSurfaceTextureListener(this);
         }
 
-
-
-//        mOverlapSurface = (TextureView) findViewById(R.id.overlap_surface);
-//        mOverlapSurface.setSurfaceTextureListener(myVideoOverlay);
-//
 
 
         mConnectStatusTextView = (TextView) findViewById(R.id.ConnectStatusTextView);
@@ -585,22 +501,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             if (!product.getModel().equals(Model.UnknownAircraft)) {
                 DJICamera camera = product.getCamera();
                 if (camera != null){
-//                     Set the callback
                     camera.setDJICameraReceivedVideoDataCallback(mReceivedVideoDataCallBack);
-//                    Intent intent = new Intent(PRODUCT_READY);
-//                    sendBroadcast(intent);
                     showToast("Connected to " + camera.getDisplayName());
 
                 }
             }
-        }
-    }
-
-    private void uninitPreviewer() {
-        DJICamera camera = MainApplication.getCameraInstance();
-        if (camera != null){
-            // Reset the callback
-            MainApplication.getCameraInstance().setDJICameraReceivedVideoDataCallback(null);
         }
     }
 
@@ -612,7 +517,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
             switchCameraMode(CameraMode.ShootPhoto);
             adjustAspectRatio();
         }
-        //mCodecManager = null;
     }
 
     @Override
@@ -684,7 +588,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
     }
 
-    // Method for taking photo
+    // NOT USED - remnants from DJI FPV sample code - Method for taking photo
     private void captureAction(){
 
         CameraMode cameraMode = CameraMode.ShootPhoto;
@@ -708,7 +612,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         }
     }
 
-    // Method for starting recording
+    // NOT USED - remnants from DJI FPV sample code - Method for starting recording
     private void startRecord(){
 
         CameraMode cameraMode = CameraMode.RecordVideo;
@@ -727,7 +631,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         }
     }
 
-    // Method for stopping recording
+    // NOT USED - remnants from DJI FPV sample code - Method for stopping recording
     private void stopRecord(){
 
         DJICamera camera = MainApplication.getCameraInstance();
@@ -744,17 +648,15 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                 }
             }); // Execute the stopRecordVideo API
         }
-
     }
 
 
 
 
     private void adjustAspectRatio() {
-        Log.i("FPV","changing aspect ratio");
+        Log.i(TAG,"changing aspect ratio");
         int viewWidth = mVideoSurface.getWidth();
         int viewHeight = mVideoSurface.getHeight();
-        Log.i("FPV","viewWidth :" + viewWidth + " viewHeight: " +viewHeight);
         double aspectRatio = (double) VIDEO_HEIGHT / VIDEO_WIDTH;
 
         int newWidth, newHeight;
@@ -789,8 +691,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
 
 
-
-
+    /*------------------------renderer private class-----------------------*/
 
     public class Renderer extends Thread implements TextureView.SurfaceTextureListener {
         private Object mLock = new Object();        // guards mSurfaceTexture, mDone
@@ -812,8 +713,6 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         SurfaceTexture mSurfaceTexture = null;
         public Renderer() {
             super("TextureViewCanvas Renderer");
-
-
         }
 
         @Override
@@ -835,26 +734,18 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                         break;
                     }
                 }
-                Log.d("bitmap", "Got surfaceTexture=" + surfaceTexture);
-
                 // Render frames until we're told to stop or the SurfaceTexture is destroyed.
                 doAnimation();
             }
 
-//        Log.d(TAG, "Renderer thread exiting");
+        Log.d(TAG, "Renderer thread exiting");
         }
 
         /**
-         * Draws updates as fast as the system will allow.
-         * <p>
-         * In 4.4, with the synchronous buffer queue queue, the frame rate will be limited.
-         * In previous (and future) releases, with the async queue, many of the frames we
-         * render may be dropped.
-         * <p>
-         * The correct thing to do here is use Choreographer to schedule frame updates off
-         * of vsync, but that's not nearly as much fun.
+         * Draws updates every RENDER_INTERVAL_MS milliseconds. fast as the system will allow.
+         * TODO: use Choreographer to trigger the drawing of the frame, rather than just drawing
+         * every RENDER_INTERVAL_MS milliseconds without knowing if a frame has been fully rendered.
          */
-
 
         private void doAnimation() {
 
@@ -897,7 +788,7 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                         Log.e("classify", "lockCanvas() failed");
                         break;
                     }
-                    canvas.drawColor(0, PorterDuff.Mode.CLEAR); //clear canvas of previosu rectangle
+                    canvas.drawColor(0, PorterDuff.Mode.CLEAR); //clear canvas of previous rectangle
 
                     if (mAbsoluteFaceSize == 0) {
                         int height = 0;
@@ -911,13 +802,13 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                         }
                     }
 
-
                     if (bitmapW == 0 || bitmapH == 0) {
                         Bitmap b0 = mVideoSurface.getBitmap();
                         bitmapW = b0.getWidth();
                         bitmapH = b0.getHeight();
                     }
 
+                    // downscale for faster processing
                     Bitmap b = Bitmap.createScaledBitmap(mVideoSurface.getBitmap(), bitmapW / 2, bitmapH / 2, false);
 
                     if (mat == null) mat = new Mat(b.getWidth(), b.getHeight(), CvType.CV_8UC1);
@@ -929,16 +820,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                     Imgproc.cvtColor(mat, mat1, Imgproc.COLOR_BGR2GRAY);
                     clahe.apply(mat1, grayMat);
 
-//                    Mat grayMat_flipped = new Mat();
-//                    flip(grayMat, grayMat_flipped, 1);
+
+
 
                     MatOfRect faces0 = new MatOfRect();
                     haar_faceClassifier.detectMultiScale(grayMat, faces0, 1.1, 4, 2, new Size(mAbsoluteFaceSize, mAbsoluteFaceSize), new Size());
-//                    MatOfRect faces1 = new MatOfRect();
-//                    haar_sideClassifier.detectMultiScale(grayMat, faces1, 1.1, 4, 2, new Size(mAbsoluteFaceSize, mAbsoluteFaceSize), new Size());
-//                    MatOfRect faces2 = new MatOfRect();
-//                    haar_sideClassifier.detectMultiScale(grayMat_flipped, faces2, 1.1, 4, 2, new Size(mAbsoluteFaceSize, mAbsoluteFaceSize), new Size());
-
                     for (org.opencv.core.Rect face : faces0.toArray()) {
                         int top = (int) (face.tl().y) * 2;
                         int left = (int) (face.tl().x) * 2;
@@ -946,41 +832,47 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
                         int right = (int) (face.br().x) * 2;
                         canvas.drawRect(left, top, right, bottom, myPaint);
                     }
-//                    for (org.opencv.core.Rect face : faces1.toArray()) {
-//                        int top = (int) (face.tl().y) * 2;
-//                        int left = (int) (face.tl().x) * 2;
-//                        int bottom = (int) (face.br().y) * 2;
-//                        int right = (int) (face.br().x) * 2;
-//                        canvas.drawRect(left, top, right, bottom, myPaint);
-//                    }
-//                    for (org.opencv.core.Rect face : faces2.toArray()) {
-//                        int top = (int) (face.tl().y) * 2;
-//                        int left = (int) (face.tl().x) * 2;
-//                        int bottom = (int) (face.br().y) * 2;
-//                        int right = (int) (face.br().x) * 2;
-//                        canvas.drawRect(canvas.getWidth() - left, top, canvas.getWidth() - right, bottom, myPaint);
-//                    }
+
+
+                    /* uncomment to process sideprofiles of images as well*/
+                    /*
+                    Mat grayMat_flipped = new Mat();
+                    flip(grayMat, grayMat_flipped, 1);
+
+                    MatOfRect faces1 = new MatOfRect();
+                    haar_sideClassifier.detectMultiScale(grayMat, faces1, 1.1, 4, 2, new Size(mAbsoluteFaceSize, mAbsoluteFaceSize), new Size());
+                    MatOfRect faces2 = new MatOfRect();
+                    haar_sideClassifier.detectMultiScale(grayMat_flipped, faces2, 1.1, 4, 2, new Size(mAbsoluteFaceSize, mAbsoluteFaceSize), new Size());
+
+
+                    for (org.opencv.core.Rect face : faces1.toArray()) {
+                        int top = (int) (face.tl().y) * 2;
+                        int left = (int) (face.tl().x) * 2;
+                        int bottom = (int) (face.br().y) * 2;
+                        int right = (int) (face.br().x) * 2;
+                        canvas.drawRect(left, top, right, bottom, myPaint);
+                    }
+                    for (org.opencv.core.Rect face : faces2.toArray()) {
+                        int top = (int) (face.tl().y) * 2;
+                        int left = (int) (face.tl().x) * 2;
+                        int bottom = (int) (face.br().y) * 2;
+                        int right = (int) (face.br().x) * 2;
+                        canvas.drawRect(canvas.getWidth() - left, top, canvas.getWidth() - right, bottom, myPaint);
+                    }
+                    */
 
                     canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), borderPaint);
-                    Log.d(TAG,"Still drawing");
 
                     if (canvas != null) {
                         if (surface == null) break;
-                        // if (surface)
-
                         surface.unlockCanvasAndPost(canvas);
                     }
-
-
-                } catch (IllegalArgumentException iae) {
-                    Log.d("classify", "unlockCanvasAndPost failed: " + iae.getMessage());
-                    break;
-                } catch (Exception e1) {
-                    e1.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
                     break;
                 }
                 try {
-                    sleep(1000);
+                    sleep(RENDER_INTERVAL_MS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -1042,21 +934,9 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
         }
 
 
-
-        /**
-         * Tells the thread to stop running.
-         */
-        public void halt() {
-            synchronized (mLock) {
-                mDone = true;
-                mLock.notify();
-            }
-        }
-
         @Override   // will be called on UI thread
         public void onSurfaceTextureAvailable(SurfaceTexture st, int width, int height) {
-            //Log.d("bitmap", "onSurfaceTextureAvailable(" + width + "x" + height + ")");
-            Log.i("bitmap", "surface tex2: " + st.toString());
+            Log.d(TAG + " renderer", "onSurfaceTextureAvailable(" + width + "x" + height + ")");
             mWidth = width;
             mHeight = height;
             synchronized (mLock) {
@@ -1067,14 +947,14 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
         @Override   // will be called on UI thread
         public void onSurfaceTextureSizeChanged(SurfaceTexture st, int width, int height) {
-            //Log.d("bitmap", "onSurfaceTextureSizeChanged(" + width + "x" + height + ")");
+            Log.d(TAG + " renderer", "onSurfaceTextureSizeChanged(" + width + "x" + height + ")");
             mWidth = width;
             mHeight = height;
         }
 
         @Override   // will be called on UI thread
         public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
-            //Log.d("bitmap", "onSurfaceTextureDestroyed");
+            Log.d(TAG + " renderer", "onSurfaceTextureDestroyed");
 
             synchronized (mLock) {
                 mSurfaceTexture = null;
@@ -1084,14 +964,11 @@ public class MainActivity extends Activity implements SurfaceTextureListener,OnC
 
         @Override   // will be called on UI thread
         public void onSurfaceTextureUpdated(SurfaceTexture st) {
-            //Log.d(TAG, "onSurfaceTextureUpdated");
+            Log.d(TAG + " renderer", "onSurfaceTextureUpdated");
         }
     }
 
-
-
-
-
+    /*------------------------renderer private class-----------------------*/
 
 
 }
